@@ -28,7 +28,7 @@ namespace CertificateSorter
                     {
                         if (extension.Oid.FriendlyName == "Basic Constraints")
                         {
-                            Console.WriteLine($"Subject: {item.Subject}, Is user certificate?: {((X509BasicConstraintsExtension)extension).CertificateAuthority}");
+                            Console.WriteLine($"Subject: {item.Subject}, Is user certificate?: {!((X509BasicConstraintsExtension)extension).CertificateAuthority}");
                         }
                     }
                 }
