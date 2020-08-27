@@ -1,38 +1,43 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Configuration;
 using System.IO;
-using System.Security.Cryptography.X509Certificates;
+using System.IO.Compression;
 
 namespace CertificateSorter
 {
     class Program
     {
+        private static readonly List<TextValues> Certificates = new List<TextValues>();
+
         static void Main(string[] args)
         {
             try
             {
                 var certDirectoryPath = ConfigurationManager.AppSettings["CertificatesDirectory"];
-                var certificateFiles = Directory.GetFiles(certDirectoryPath, "*.txt", SearchOption.AllDirectories);
+                var certificateFiles = Directory.GetFiles(certDirectoryPath);
 
-                var collection = new X509Certificate2Collection();
                 foreach (var file in certificateFiles)
                 {
-                    var certificate = new X509Certificate2();
-                    certificate.Import(file);
-                    collection.Add(certificate);
-                }
-
-                foreach (var item in collection)
-                {
-                    foreach (var extension in item.Extensions)
+                    var orderId = ExtractOrderId(file);
+                    try
                     {
-                        if (extension.Oid.FriendlyName == "Basic Constraints")
+                        using (var archive = ZipFile.Open(file, ZipArchiveMode.Read))
                         {
-                            Console.WriteLine($"Subject: {item.Subject}, Is user certificate?: {!((X509BasicConstraintsExtension)extension).CertificateAuthority}");
+                            var collection = archive.CreateCollection();
+                            var certificate = collection.GetUserCertificate();
+
+                            Certificates.Add(new TextValues(orderId, certificate.ExportCertToPem()));
+                            Console.WriteLine($"User certificate found for file: {Path.GetFileName(file)}");
                         }
+                    }
+                    catch (Exception exception)
+                    {
+                        Console.WriteLine($"Error reading file: {Path.GetFileName(file)}. Exception: {exception.Message}");
                     }
                 }
 
+                SqlHelper.BulkUpdate(Certificates);
                 Console.ReadLine();
             }
             catch (Exception exception)
@@ -41,5 +46,21 @@ namespace CertificateSorter
                 throw;
             }
         }
+
+        #region Helpers
+        
+        /// <summary>
+        /// Extracts the ascio order id from the file name
+        /// </summary>
+        /// <param name="file">Full file name</param>
+        /// <returns>Ascio Order Id</returns>
+        private static int ExtractOrderId(string file)
+        {
+            var fileName = Path.GetFileNameWithoutExtension(file);
+            var orderId = fileName?.Replace("A", "");
+            return Convert.ToInt32(orderId);
+        } 
+
+        #endregion
     }
 }
