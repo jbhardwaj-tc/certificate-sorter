@@ -1,8 +1,11 @@
-﻿using System;
+﻿using CertificateSorter.Helpers;
+using SimpleLogger;
+using System;
 using System.Collections.Generic;
 using System.Configuration;
 using System.IO;
 using System.IO.Compression;
+using System.Security.Cryptography.X509Certificates;
 
 namespace CertificateSorter
 {
@@ -12,54 +15,56 @@ namespace CertificateSorter
 
         static void Main(string[] args)
         {
+            LoggingHelper.Initialize();
             try
             {
+                Logger.Log(Logger.Level.Info, "Starting reading files...");
                 var certDirectoryPath = ConfigurationManager.AppSettings["CertificatesDirectory"];
                 var certificateFiles = Directory.GetFiles(certDirectoryPath);
 
                 foreach (var file in certificateFiles)
                 {
-                    var orderId = ExtractOrderId(file);
+                    Console.WriteLine($"Processing file: {file}");
                     try
                     {
                         using (var archive = ZipFile.Open(file, ZipArchiveMode.Read))
                         {
+                            var record = SqlHelper.ExtractTextValueData(Path.GetFileNameWithoutExtension(file));
                             var collection = archive.CreateCollection();
                             var certificate = collection.GetUserCertificate();
 
-                            Certificates.Add(new TextValues(orderId, certificate.ExportCertToPem()));
-                            Console.WriteLine($"User certificate found for file: {Path.GetFileName(file)}");
+                            AddCertificateToUpdate(record, certificate);
+
                         }
                     }
                     catch (Exception exception)
                     {
-                        Console.WriteLine($"Error reading file: {Path.GetFileName(file)}. Exception: {exception.Message}");
+                        Logger.Log(Logger.Level.Error, $"Error reading file: {Path.GetFileName(file)}. Exception: {exception.Message}");
                     }
                 }
 
                 SqlHelper.BulkUpdate(Certificates);
+                Logger.Log(Logger.Level.Info, $"Read and processed a total of: {certificateFiles.Length} files");
                 Console.ReadLine();
             }
             catch (Exception exception)
             {
-                Console.WriteLine(exception);
+                Logger.Log(Logger.Level.Error, exception.Message);
                 throw;
             }
         }
 
         #region Helpers
         
-        /// <summary>
-        /// Extracts the ascio order id from the file name
-        /// </summary>
-        /// <param name="file">Full file name</param>
-        /// <returns>Ascio Order Id</returns>
-        private static int ExtractOrderId(string file)
+        private static void AddCertificateToUpdate(TextValues textValues, X509Certificate2 userCertificate)
         {
-            var fileName = Path.GetFileNameWithoutExtension(file);
-            var orderId = fileName?.Replace("A", "");
-            return Convert.ToInt32(orderId);
-        } 
+            if (textValues.Certificate.Equals(userCertificate)) 
+                return;
+
+            textValues.UpdateCertificate(userCertificate);
+            Logger.Log(Logger.Level.Info, textValues.ToString());
+            Certificates.Add(textValues);
+        }
 
         #endregion
     }

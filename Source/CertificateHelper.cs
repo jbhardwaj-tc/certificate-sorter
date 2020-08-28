@@ -37,10 +37,7 @@ namespace CertificateSorter
                         }
                     }
                 }
-                catch (Exception exception)
-                {
-                    Console.WriteLine($"Not a valid certificate file:  {entry.FullName}. {exception.Message}");
-                }
+                catch (Exception) { }
             }
 
             return collection;
@@ -56,20 +53,30 @@ namespace CertificateSorter
             X509Certificate2 certificate = null;
             foreach (var item in collection)
             {
-                foreach (var extension in item.Extensions)
+                if (IsEndEntityCertificate(item))
                 {
-                    if (extension.Oid.FriendlyName != "Basic Constraints")
-                        continue;
-                    var hasUserCertificate = !((X509BasicConstraintsExtension)extension).CertificateAuthority;
-
-                    if (!hasUserCertificate)
-                        continue;
                     certificate = item;
                     break;
                 }
             }
 
             return certificate;
+        }
+
+        public static bool IsEndEntityCertificate(this X509Certificate2 certificate)
+        {
+            if (certificate == null)
+                return false;
+
+            foreach (var extension in certificate.Extensions)
+            {
+                if (extension.Oid.FriendlyName == "Basic Constraints")
+                {
+                    return !((X509BasicConstraintsExtension)extension).CertificateAuthority;
+                }
+            }
+
+            return false;
         }
 
         /// <summary>
